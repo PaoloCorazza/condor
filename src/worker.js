@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js';
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_KEY = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 const WORKER_NAME = process.env.WORKER_NAME || 'agrimarket-playwright-v3';
+const RUN_ONCE = /^(1|true|yes)$/i.test(process.env.RUN_ONCE || '');
 
 if (!SUPABASE_URL || !SUPABASE_KEY) {
   throw new Error('SUPABASE_URL and SUPABASE_SECRET_KEY (or SUPABASE_SERVICE_ROLE_KEY) are required');
@@ -259,7 +260,7 @@ async function runCycle() {
 }
 
 async function main() {
-  console.log(JSON.stringify({ event: 'worker_start', worker: WORKER_NAME }));
+  console.log(JSON.stringify({ event: 'worker_start', worker: WORKER_NAME, run_once: RUN_ONCE }));
   while (!stopping) {
     let intervalMinutes = 5;
     try {
@@ -269,6 +270,8 @@ async function main() {
       console.error(JSON.stringify({ event: 'cycle_error', error: message }));
       await heartbeat({ last_status: 'error', last_error: message.slice(0, 4000) }).catch(() => {});
     }
+
+    if (RUN_ONCE) break;
 
     const waitMs = Math.max(1, intervalMinutes) * 60_000;
     const deadline = Date.now() + waitMs;
