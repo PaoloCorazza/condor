@@ -1,0 +1,15 @@
+services:
+  - type: worker
+    name: agrimarket-playwright
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    autoDeployTrigger: commit
+    envVars:
+      - key: SUPABASE_URL
+        value: https://teterxteofyhmrcijrew.supabase.co
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: WORKER_NAME
+        value: agrimarket-playwright-v3

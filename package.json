@@ -1,0 +1,18 @@
+{
+  "name": "agrimarket-playwright-worker",
+  "version": "3.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Playwright worker that monitors OLX agricultural commodity listings and stores them in Supabase.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/worker.js",
+    "check": "node --check src/worker.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.112.4",
+    "playwright": "1.62.0"
+  }
+}
