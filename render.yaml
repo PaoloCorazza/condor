@@ -1,15 +1,3 @@
-services:
-  - type: worker
-    name: agrimarket-playwright
-    runtime: docker
-    plan: starter
-    region: frankfurt
-    dockerfilePath: ./Dockerfile
-    autoDeployTrigger: commit
-    envVars:
-      - key: SUPABASE_URL
-        value: https://teterxteofyhmrcijrew.supabase.co
-      - key: SUPABASE_SECRET_KEY
-        sync: false
-      - key: WORKER_NAME
-        value: agrimarket-playwright-v3
+# Intentionally empty: Render background workers require a paid plan.
+# Add a service only after the recurring cost has been explicitly approved.
+services: []
