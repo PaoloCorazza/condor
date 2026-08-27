@@ -164,13 +164,27 @@ async function scrapeTarget(browser, target, settings) {
   try {
     for (let pageNumber = 1; pageNumber <= settings.max_pages_per_query && !stopping; pageNumber += 1) {
       const url = `https://www.olx.pl/oferty/q-${slugifyQuery(target.search_query)}/?page=${pageNumber}`;
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+      const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
       await page.locator('[data-cy="l-card"]').first().waitFor({ state: 'visible', timeout: 20_000 }).catch(() => {});
       const now = new Date().toISOString();
       const rows = await extractCards(page, target, now);
       pagesScanned += 1;
       listingsSeen += rows.length;
-      if (!rows.length) break;
+      if (!rows.length) {
+        const bodyPreview = (await page.locator('body').innerText().catch(() => ''))
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 300);
+        console.warn(JSON.stringify({
+          event: 'no_cards',
+          query: target.search_query,
+          httpStatus: response?.status() ?? null,
+          title: await page.title().catch(() => ''),
+          finalUrl: page.url(),
+          bodyPreview,
+        }));
+        break;
+      }
 
       const saved = await saveListings(rows, now);
       listingsInserted += saved.inserted;
@@ -190,6 +204,7 @@ async function scrapeTarget(browser, target, settings) {
     }).eq('id', run.id);
     if (error) throw error;
     console.log(JSON.stringify({ event: 'target_complete', query: target.search_query, pagesScanned, listingsSeen, listingsInserted, listingsUpdated }));
+    return { pagesScanned, listingsSeen, listingsInserted, listingsUpdated };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     await supabase.from('scrape_runs').update({
@@ -232,17 +247,22 @@ async function runCycle() {
   });
 
   let failures = 0;
+  let totalListingsSeen = 0;
   try {
     for (const target of targets) {
       if (stopping) break;
       try {
-        await scrapeTarget(activeBrowser, target, settings);
+        const result = await scrapeTarget(activeBrowser, target, settings);
+        totalListingsSeen += result.listingsSeen;
       } catch (error) {
         failures += 1;
         const message = error instanceof Error ? error.message : String(error);
         console.error(JSON.stringify({ event: 'target_error', query: target.search_query, error: message }));
         await heartbeat({ last_status: `error:${target.search_query}`, last_error: message.slice(0, 4000) });
       }
+    }
+    if (targets.length > 0 && totalListingsSeen === 0) {
+      throw new Error('Safety stop: no OLX listings were found; stale-listing cleanup was skipped');
     }
     await markStaleListings(settings.stale_after_days);
   } finally {
@@ -269,6 +289,7 @@ async function main() {
       const message = error instanceof Error ? error.message : String(error);
       console.error(JSON.stringify({ event: 'cycle_error', error: message }));
       await heartbeat({ last_status: 'error', last_error: message.slice(0, 4000) }).catch(() => {});
+      if (RUN_ONCE) throw error;
     }
 
     if (RUN_ONCE) break;
