@@ -23,6 +23,13 @@ let activeBrowser;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+class SourceBlockedError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'SourceBlockedError';
+  }
+}
+
 function slugifyQuery(query) {
   return encodeURIComponent(query.trim()).replace(/%20/g, '-');
 }
@@ -165,6 +172,22 @@ async function scrapeTarget(browser, target, settings) {
     for (let pageNumber = 1; pageNumber <= settings.max_pages_per_query && !stopping; pageNumber += 1) {
       const url = `https://www.olx.pl/oferty/q-${slugifyQuery(target.search_query)}/?page=${pageNumber}`;
       const response = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45_000 });
+      const initialTitle = await page.title().catch(() => '');
+      if (/human verification/i.test(initialTitle)) {
+        const bodyPreview = (await page.locator('body').innerText().catch(() => ''))
+          .replace(/\s+/g, ' ')
+          .trim()
+          .slice(0, 300);
+        console.warn(JSON.stringify({
+          event: 'source_blocked',
+          query: target.search_query,
+          httpStatus: response?.status() ?? null,
+          title: initialTitle,
+          finalUrl: page.url(),
+          bodyPreview,
+        }));
+        throw new SourceBlockedError(`OLX human verification blocked the worker (HTTP ${response?.status() ?? 'unknown'})`);
+      }
       await page.locator('[data-cy="l-card"]').first().waitFor({ state: 'visible', timeout: 20_000 }).catch(() => {});
       const now = new Date().toISOString();
       const rows = await extractCards(page, target, now);
@@ -259,6 +282,7 @@ async function runCycle() {
         const message = error instanceof Error ? error.message : String(error);
         console.error(JSON.stringify({ event: 'target_error', query: target.search_query, error: message }));
         await heartbeat({ last_status: `error:${target.search_query}`, last_error: message.slice(0, 4000) });
+        if (error instanceof SourceBlockedError) throw error;
       }
     }
     if (targets.length > 0 && totalListingsSeen === 0) {
